@@ -3,12 +3,16 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy import Column, BigInteger, Float, String, select, Integer
 from config import DATABASE_URL
 
-# Correzione per URL Postgres di Railway/Heroku (iniziano con postgres:// ma SQLAlchemy vuole postgresql://)
-if DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+asyncpg://", 1)
+# Normalizzazione URL per asyncpg (driver async per PostgreSQL/Supabase)
+# Supabase fornisce URL nella forma postgresql:// o postgres://
+_db_url = DATABASE_URL
+if _db_url.startswith("postgres://"):
+    _db_url = _db_url.replace("postgres://", "postgresql+asyncpg://", 1)
+elif _db_url.startswith("postgresql://"):
+    _db_url = _db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
 
 # Setup Motore Database
-engine = create_async_engine(DATABASE_URL, echo=False)
+engine = create_async_engine(_db_url, echo=False)
 AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 Base = declarative_base()
 

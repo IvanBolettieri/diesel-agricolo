@@ -220,7 +220,7 @@ async def save_favorite_callback(update: Update, context: ContextTypes.DEFAULT_T
         await query.message.reply_text(
             "❌ *Errore di sistema*\n"
             "Non sono riuscito a salvare il preferito.\n"
-            "_Suggerimento: Se hai appena aggiornato il bot, chiedi all'admin di cancellare il file bot.db_",
+            "_Suggerimento: Riprova tra qualche minuto o contatta l'amministratore._",
             parse_mode="Markdown"
         )
 
