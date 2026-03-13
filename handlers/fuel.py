@@ -25,6 +25,9 @@ async def find_gas_stations(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lat = user.latitude
     lon = user.longitude
 
+    # Log posizione di partenza ricerca
+    logger.info(f"⛽ RICERCA START | User: {user_id} | Luogo: {user.location_name} | Coord: {lat}, {lon}")
+
     # Recuperiamo il tipo carburante (Default: 2-1 che è Diesel/Gasolio, 1-1 è Benzina)
     fuel_type = user.fuel_type if user.fuel_type else "2-1"
     fuel_label = "Diesel" if fuel_type == "2-1" else "Benzina"

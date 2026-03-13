@@ -18,7 +18,7 @@ async def handle_text_location(update: Update, context: ContextTypes.DEFAULT_TYP
     
     # Feedback immediato all'utente
     wait_msg = await update.message.reply_text(f"🌍  _Sto cercando \"{query}\"..._")
-    
+    logging.info(f"🔍 Ricerca località per User {update.effective_user.id}: '{query}'")
     results = await search_location(query)
     
     if not results:
@@ -27,6 +27,11 @@ async def handle_text_location(update: Update, context: ContextTypes.DEFAULT_TYP
 
     keyboard = []
     for place in results:
+        # FILTRO ANTI-DUPLICATI: Saltiamo le province ("county")
+        # L'utente vuole vedere solo città/comuni e non l'area amministrativa provinciale
+        if place.get('addresstype') == 'county':
+            continue
+
         # Creiamo un identificativo breve per il callback: "LOC|lat|lon"
         lat = place.get('lat')
         lon = place.get('lon')
@@ -89,6 +94,8 @@ async def handle_gps_location(update: Update, context: ContextTypes.DEFAULT_TYPE
         )
 
 async def confirm_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    logging.info(f"📍 Callback Posizione ricevuta: {update, context}")
     """Gestisce il click sul bottone della località"""
     query = update.callback_query
     await query.answer() # Conferma a Telegram che abbiamo ricevuto il click
