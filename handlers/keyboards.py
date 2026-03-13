@@ -4,8 +4,8 @@ def get_main_menu():
     """Restituisce la tastiera del menu principale"""
     keyboard = [
         [KeyboardButton("⛽ Cerca Benzinai")],
-        [KeyboardButton("📍 Imposta Posizione"), KeyboardButton("⚙️ Carburante")],
-        [KeyboardButton("ℹ️ Info")]
+        [KeyboardButton("📍 Imposta Posizione"), KeyboardButton("⭐ Preferiti")],
+        [KeyboardButton("⚙️ Carburante"), KeyboardButton("ℹ️ Info")]
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 

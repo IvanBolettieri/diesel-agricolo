@@ -1,9 +1,12 @@
-from telegram import Update
+import logging
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from datetime import datetime
 from services.fuel_api import search_fuel_stations
 from handlers.keyboards import get_main_menu, get_fuel_menu
-from database import get_user, update_user_fuel
+from database import get_user, update_user_fuel, add_favorite, get_user_favorites, delete_favorite
+
+logger = logging.getLogger(__name__)
 
 async def find_gas_stations(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Gestisce la ricerca dei benzinai basata sulla posizione salvata nel DB"""
@@ -21,6 +24,9 @@ async def find_gas_stations(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     lat = user.latitude
     lon = user.longitude
+
+    # Log posizione di partenza ricerca
+    logger.info(f"⛽ RICERCA START | User: {user_id} | Luogo: {user.location_name} | Coord: {lat}, {lon}")
 
     # Recuperiamo il tipo carburante (Default: 2-1 che è Diesel/Gasolio, 1-1 è Benzina)
     fuel_type = user.fuel_type if user.fuel_type else "2-1"
@@ -81,7 +87,9 @@ async def find_gas_stations(update: Update, context: ContextTypes.DEFAULT_TYPE):
     stations_to_sort.sort(key=lambda x: (x['price'], -x['ts']))
 
     # Prendiamo i primi 5 risultati ordinati
-    for item in stations_to_sort[:5]:
+    final_list = stations_to_sort[:5]
+    
+    for idx, item in enumerate(final_list, 1):
         station = item['data']
         
         # Cerchiamo nella lista 'fuels' le voci che corrispondono al carburante scelto
@@ -100,7 +108,7 @@ async def find_gas_stations(update: Update, context: ContextTypes.DEFAULT_TYPE):
         brand = station.get('brand', 'Sconosciuto')
         name = station.get('name', '').title() # Mette la maiuscola alle parole
         
-        message += f"⛽  *{brand}* \nResult: _{name}_\n"
+        message += f"{idx}️⃣  ⛽  *{brand}*\n_{name}_\n"
         
         if matching_fuels:
             # Ordiniamo per prezzo e mostriamo tutte le opzioni (es. Self e Servito)
@@ -122,7 +130,23 @@ async def find_gas_stations(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         message += "\n──────────────────\n"
 
-    await update.message.reply_text(message, parse_mode="Markdown", reply_markup=get_main_menu())
+    # Creiamo i bottoni per salvare nei preferiti
+    # I callback data saranno: SAV|lat|lon|station_id
+    keyboard = []
+    for idx, item in enumerate(final_list, 1):
+        st = item['data']
+        st_id = st.get('id')
+        lat = st.get('location', {}).get('lat')
+        lon = st.get('location', {}).get('lng')
+        brand = st.get('brand', 'Distributore')
+        
+        callback_data = f"SAV|{lat:.6f}|{lon:.6f}|{st_id}"
+        # Pulsanti verticali con il nome del brand per una associazione più chiara
+        keyboard.append([InlineKeyboardButton(f"⭐ Salva {brand} ({idx})", callback_data=callback_data)])
+        
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await update.message.reply_text(message, parse_mode="Markdown", reply_markup=reply_markup)
 
 async def show_fuel_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Mostra il menu per scegliere il carburante"""
@@ -154,3 +178,150 @@ async def set_fuel_diesel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "✅  *Configurazione Aggiornata*\n\n"
         "Hai impostato: ⚫ **DIESEL**",
         reply_markup=get_main_menu(), parse_mode="Markdown")
+
+async def save_favorite_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Salva un preferito quando si clicca sul bottone"""
+    query = update.callback_query
+    await query.answer()
+    
+    data = query.data # SAV|lat|lon|id
+    _, lat, lon, st_id = data.split('|')
+    
+    try:
+        # Recuperiamo l'utente per usare il filtro carburante corretto
+        user = await get_user(update.effective_user.id)
+        fuel_type = user.fuel_type if user else "2-1"
+        
+        # Aumentiamo il raggio a 5km per essere sicuri di ritrovare la stazione
+        response = await search_fuel_stations(float(lat), float(lon), radius=5, fuel_type=fuel_type)
+        
+        target_station = None
+        if response:
+            results = response if isinstance(response, list) else response.get('results', [])
+            for s in results:
+                if str(s.get('id')) == str(st_id):
+                    target_station = s
+                    break
+        
+        if target_station:
+            brand = target_station.get('brand', 'Distributore')
+            name = target_station.get('name', 'Sconosciuto').title()
+            
+            success = await add_favorite(update.effective_user.id, int(st_id), name, brand, float(lat), float(lon))
+            if success:
+                await query.message.reply_text(f"⭐ *{brand}* ({name})\n✅ Aggiunto ai tuoi preferiti!", parse_mode="Markdown")
+            else:
+                await query.message.reply_text(f"⚠️ Questo distributore è già nei tuoi preferiti.")
+        else:
+            await query.message.reply_text("❌ Impossibile recuperare i dati del distributore (non trovato).")
+            
+    except Exception as e:
+        logger.error(f"❌ ERRORE SALVATAGGIO PREFERITO: {e}")
+        await query.message.reply_text(
+            "❌ *Errore di sistema*\n"
+            "Non sono riuscito a salvare il preferito.\n"
+            "_Suggerimento: Se hai appena aggiornato il bot, chiedi all'admin di cancellare il file bot.db_",
+            parse_mode="Markdown"
+        )
+
+async def show_favorites_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Mostra la lista dei preferiti salvati"""
+    try:
+        favorites = await get_user_favorites(update.effective_user.id)
+    except Exception as e:
+        logger.error(f"❌ ERRORE LISTA PREFERITI: {e}")
+        await update.message.reply_text("❌ Errore nel recupero dei preferiti. Database non aggiornato?")
+        return
+    
+    if not favorites:
+        await update.message.reply_text(
+            "⭐ *Nessun preferito salvato.*\n\n"
+            "Quando cerchi i benzinai, clicca su '⭐ Salva' sotto i risultati per aggiungerli qui.",
+            parse_mode="Markdown"
+        )
+        return
+
+    keyboard = []
+    for fav in favorites:
+        # Bottone per controllare: CHK|lat|lon|station_id
+        # Bottone per cancellare: DEL|db_id
+        btn_check = InlineKeyboardButton(f"🔎 {fav.brand} - {fav.name[:15]}...", callback_data=f"CHK|{fav.latitude}|{fav.longitude}|{fav.station_id}")
+        btn_del = InlineKeyboardButton("❌", callback_data=f"DEL|{fav.id}")
+        keyboard.append([btn_check, btn_del])
+
+    await update.message.reply_text(
+        "⭐ *I TUOI PREFERITI*\n_Clicca sul nome per vedere il prezzo aggiornato:_",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown"
+    )
+
+async def handle_favorite_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Gestisce il click nella lista preferiti (Controllo o Cancellazione)"""
+    query = update.callback_query
+    data = query.data
+    
+    if data.startswith("DEL|"):
+        fav_id = int(data.split('|')[1])
+        await delete_favorite(fav_id)
+        await query.answer("🗑️ Preferito rimosso!")
+        # Ricarica la lista aggiornata
+        await query.message.delete()
+        await show_favorites_list(update, context)
+        
+    elif data.startswith("CHK|"):
+        await query.answer("🔄 Controllo prezzi...")
+        _, lat, lon, st_id = data.split('|')
+        
+        # Simuliamo una ricerca su quel singolo benzinaio
+        # Usiamo raggio piccolissimo (1km) sulle sue coordinate esatte
+        
+        # Impostiamo temporaneamente le coordinate utente per questa ricerca (hack visivo)
+        user = await get_user(update.effective_user.id)
+        fuel_type = user.fuel_type if user else "2-1"
+        
+        # Chiamata API manuale
+        response = await search_fuel_stations(float(lat), float(lon), radius=1, fuel_type=fuel_type)
+        
+        # Qui potremmo riusare la logica di visualizzazione, ma per semplicità rimandiamo un messaggio dedicato
+        # O semplicemente chiamiamo find_gas_stations con le coordinate truccate?
+        # Meglio chiamare find_gas_stations passandogli context modificati o copiando la logica.
+        # Per non duplicare troppo codice, salviamo temporaneamente le coordinate nel DB e chiamiamo la funzione standard?
+        # No, l'utente non vuole perdere la sua posizione "di casa".
+        
+        # Facciamo una visualizzazione rapida qui
+        target = None
+        if response:
+            res_list = response if isinstance(response, list) else response.get('results', [])
+            for s in res_list:
+                if str(s.get('id')) == str(st_id):
+                    target = s
+                    break
+        
+        if target:
+            # Ricostruzione rapida messaggio prezzo
+            fuel_label = "Diesel" if fuel_type == "2-1" else "Benzina"
+            target_fuel_id = 1 if fuel_type.startswith('1') else 2
+            
+            fuels = [f for f in target.get('fuels', []) if f.get('fuelId') == target_fuel_id]
+            fuels.sort(key=lambda x: x.get('price', 999))
+            
+            msg = f"⭐ *{target.get('brand')}*\n_{target.get('name', '').title()}_\n\n"
+            if fuels:
+                for f in fuels:
+                    p = f.get('price')
+                    t = "🟢 Self" if f.get('isSelf') else "🤵 Servito"
+                    msg += f"{t}:  💶 *{p:.3f} €*\n"
+            else:
+                msg += "⚠️ Prezzo non disponibile per il carburante selezionato."
+                
+            # Data
+            try:
+                dt = datetime.fromisoformat(target.get('insertDate', ''))
+                d_str = dt.strftime("%d/%m/%Y %H:%M")
+            except: d_str = "N/D"
+            
+            msg += f"\n📅 Aggiornato: {d_str}"
+            
+            await query.message.reply_text(msg, parse_mode="Markdown")
+        else:
+            await query.message.reply_text("❌ Impossibile aggiornare i dati di questo distributore. Potrebbe essere chiuso o aver cambiato ID.")

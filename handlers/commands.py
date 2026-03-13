@@ -51,7 +51,7 @@ async def posizione(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"{status_msg}🎯 *Vuoi cambiare zona?*\n\n"
         "1️⃣  Clicca il tasto *Invia posizione attuale*\n"
-        "2️⃣  Oppure scrivi il *nome della tua città* (es. _Matera_)",
+        "2️⃣  Oppure scrivi il *nome della tua città* (es. Grassano) e premi invio.\n\n",
         reply_markup=reply_markup,
         parse_mode="Markdown"
     )

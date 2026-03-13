@@ -18,7 +18,7 @@ async def handle_text_location(update: Update, context: ContextTypes.DEFAULT_TYP
     
     # Feedback immediato all'utente
     wait_msg = await update.message.reply_text(f"🌍  _Sto cercando \"{query}\"..._")
-    
+    logging.info(f"🔍 Ricerca località per User {update.effective_user.id}: '{query}'")
     results = await search_location(query)
     
     if not results:
@@ -27,6 +27,11 @@ async def handle_text_location(update: Update, context: ContextTypes.DEFAULT_TYP
 
     keyboard = []
     for place in results:
+        # FILTRO ANTI-DUPLICATI: Saltiamo le province ("county")
+        # L'utente vuole vedere solo città/comuni e non l'area amministrativa provinciale
+        if place.get('addresstype') == 'county':
+            continue
+
         # Creiamo un identificativo breve per il callback: "LOC|lat|lon"
         lat = place.get('lat')
         lon = place.get('lon')
@@ -57,19 +62,40 @@ async def handle_text_location(update: Update, context: ContextTypes.DEFAULT_TYP
 
 async def handle_gps_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Gestisce la posizione GPS inviata direttamente dall'utente"""
-    lat = update.message.location.latitude
-    lon = update.message.location.longitude
-    
-    await update_user_location(update.effective_user.id, lat, lon, "Posizione GPS")
-    # Abbiamo ottenuto la posizione, smettiamo di ascoltare
-    context.user_data['waiting_for_location'] = False
-    
-    await update.message.reply_text(
-        f"✅ Posizione GPS acquisita!\nCoordinate: {lat:.4f}, {lon:.4f}",
-        reply_markup=get_main_menu()
-    )
+    try:
+        lat = update.message.location.latitude
+        lon = update.message.location.longitude
+        
+        await update_user_location(update.effective_user.id, lat, lon, "📍 Posizione GPS")
+        # Abbiamo ottenuto la posizione, smettiamo di ascoltare
+        context.user_data['waiting_for_location'] = False
+        
+        await update.message.reply_text(
+            "✅  *Posizione Acquisita!*\n\n"
+            "🛰️  *Rilevamento GPS completato*\n"
+            f"🌐  `{lat:.4f}, {lon:.4f}`\n"
+            "_Tutto pronto per cercare i benzinai._",
+            parse_mode="Markdown"
+        )
+        
+        # Mostriamo la mappa per conferma visiva
+        await context.bot.send_location(chat_id=update.effective_chat.id, latitude=lat, longitude=lon)
+        
+        # Mostriamo il menu
+        await update.message.reply_text("👇 Usa il menu per continuare:", reply_markup=get_main_menu())
+
+    except Exception as e:
+        logger.error(f"❌ ERRORE GPS: {e}")
+        await update.message.reply_text(
+            "❌  *Errore di sistema*\n"
+            "Non sono riuscito a salvare la tua posizione.\n"
+            "_Consiglio: Chiedi all'amministratore di cancellare il file bot.db e riavviare._",
+            parse_mode="Markdown"
+        )
 
 async def confirm_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    logging.info(f"📍 Callback Posizione ricevuta: {update, context}")
     """Gestisce il click sul bottone della località"""
     query = update.callback_query
     await query.answer() # Conferma a Telegram che abbiamo ricevuto il click
