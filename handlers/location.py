@@ -89,7 +89,7 @@ async def handle_gps_location(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text(
             "❌  *Errore di sistema*\n"
             "Non sono riuscito a salvare la tua posizione.\n"
-            "_Consiglio: Chiedi all'amministratore di cancellare il file bot.db e riavviare._",
+            "_Consiglio: Riprova tra qualche minuto o contatta l'amministratore._",
             parse_mode="Markdown"
         )
 

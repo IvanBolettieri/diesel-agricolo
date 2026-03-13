@@ -17,12 +17,13 @@ if __name__ == '__main__':
         print("Errore: Token non trovato. Controlla il file .env")
         exit(1)
 
-    # Inizializzazione Database
-    import asyncio
-    asyncio.run(init_db())
+    # Callback post_init: inizializza il DB nello stesso event loop dell'applicazione
+    async def post_init(application):
+        await init_db()
+        print("Database inizializzato correttamente.")
 
     # Creazione dell'applicazione
-    application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+    application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).post_init(post_init).build()
 
     # Aggiunta del gestore per il comando /start
     start_handler = CommandHandler('start', start)

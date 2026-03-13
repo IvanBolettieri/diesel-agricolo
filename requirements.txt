@@ -1,7 +1,5 @@
 python-telegram-bot
 python-dotenv
-requests
 aiohttp
-pandas
 sqlalchemy
-aiosqlite
+asyncpg
