@@ -17,12 +17,12 @@ async def handle_text_location(update: Update, context: ContextTypes.DEFAULT_TYP
     query = update.message.text
     
     # Feedback immediato all'utente
-    wait_msg = await update.message.reply_text(f"🔍 Cerco '{query}'...")
+    wait_msg = await update.message.reply_text(f"🌍  _Sto cercando \"{query}\"..._")
     
     results = await search_location(query)
     
     if not results:
-        await wait_msg.edit_text("❌ Nessuna località trovata. Riprova con un nome più specifico.")
+        await wait_msg.edit_text("❌  *Località non trovata.*\nProva a scrivere il nome in modo più specifico (es. _Matera, Basilicata_).", parse_mode="Markdown")
         return
 
     keyboard = []
@@ -53,14 +53,14 @@ async def handle_text_location(update: Update, context: ContextTypes.DEFAULT_TYP
         keyboard.append([InlineKeyboardButton(f"{icon} {label_name}", callback_data=callback_data)])
 
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await wait_msg.edit_text("Ho trovato questi risultati, clicca su quello corretto:", reply_markup=reply_markup)
+    await wait_msg.edit_text("👇  *Ho trovato questi risultati:*\n_Clicca su quello corretto per confermare._", reply_markup=reply_markup, parse_mode="Markdown")
 
 async def handle_gps_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Gestisce la posizione GPS inviata direttamente dall'utente"""
     lat = update.message.location.latitude
     lon = update.message.location.longitude
     
-    await update_user_location(update.effective_user.id, lat, lon)
+    await update_user_location(update.effective_user.id, lat, lon, "Posizione GPS")
     # Abbiamo ottenuto la posizione, smettiamo di ascoltare
     context.user_data['waiting_for_location'] = False
     
@@ -90,17 +90,17 @@ async def confirm_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         location_name = btn.text.replace("📍 ", "").replace("🏙️ ", "").replace("🗺️ ", "")
                         break
 
-        logger.info(f"💾 Salvataggio Coordinate per User {update.effective_user.id}: Lat={lat}, Lon={lon}")
+        logger.info(f"💾 Salvataggio Coordinate per User {update.effective_user.id}: Luogo='{location_name}' | Lat={lat}, Lon={lon}")
         # Salviamo la posizione nel DB
-        await update_user_location(update.effective_user.id, float(lat), float(lon))
+        await update_user_location(update.effective_user.id, float(lat), float(lon), location_name)
         # Abbiamo impostato la posizione, smettiamo di ascoltare
         context.user_data['waiting_for_location'] = False
         
         # Modifichiamo il messaggio originale per confermare
         await query.edit_message_text(
-            f"✅ Posizione impostata: **{location_name}**\n"
-            f"Coordinate: {lat}, {lon}\n"
-            f"Ora userò questa posizione per cercare i benzinai.",
+            f"✅  *Posizione Salvata!*\n\n"
+            f"📍  **{location_name}**\n"
+            f"_Tutto pronto per cercare i benzinai._",
             parse_mode="Markdown"
         )
         
@@ -108,4 +108,4 @@ async def confirm_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_location(chat_id=update.effective_chat.id, latitude=float(lat), longitude=float(lon))
         
         # Inviamo un nuovo messaggio per mostrare il menu (perché edit_message_text non può mostrare una ReplyKeyboard)
-        await context.bot.send_message(chat_id=update.effective_chat.id, text="Cosa vuoi fare adesso?", reply_markup=get_main_menu())
+        await context.bot.send_message(chat_id=update.effective_chat.id, text="👇 Usa il menu per continuare:", reply_markup=get_main_menu())
