@@ -3,7 +3,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, Cal
 from config import TELEGRAM_BOT_TOKEN
 from handlers.commands import start, posizione, info_bot, menu_principale
 from handlers.location import handle_text_location, confirm_location, handle_gps_location
-from handlers.fuel import find_gas_stations, show_fuel_menu, set_fuel_benzina, set_fuel_diesel
+from handlers.fuel import find_gas_stations, show_fuel_menu, set_fuel_benzina, set_fuel_diesel, save_favorite_callback, show_favorites_list, handle_favorite_action
 from database import init_db
 
 # Configurazione base del logging per vedere errori e info nel terminale
@@ -45,6 +45,12 @@ if __name__ == '__main__':
     
     # Gestione Cerca Benzinai
     application.add_handler(MessageHandler(filters.Regex("^⛽ Cerca Benzinai$"), find_gas_stations))
+    
+    # Gestione Preferiti
+    application.add_handler(MessageHandler(filters.Regex("^⭐ Preferiti$"), show_favorites_list))
+    application.add_handler(CallbackQueryHandler(save_favorite_callback, pattern=r"^SAV\|"))
+    application.add_handler(CallbackQueryHandler(handle_favorite_action, pattern=r"^(CHK|DEL)\|"))
+
     
     # Gestione messaggi di testo (per la ricerca città)
     # Filtriamo via i comandi (che iniziano con /) per evitare conflitti
