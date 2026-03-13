@@ -20,6 +20,7 @@ class User(Base):
     latitude = Column(Float, nullable=True)
     longitude = Column(Float, nullable=True)
     fuel_type = Column(String, default="2-1")  # Default Diesel
+    location_name = Column(String, nullable=True)
 
 # --- Funzioni Helper ---
 
@@ -48,18 +49,20 @@ async def create_or_get_user(user_id: int):
             
         return user
 
-async def update_user_location(user_id: int, lat: float, lon: float):
+async def update_user_location(user_id: int, lat: float, lon: float, location_name: str = None):
     """Aggiorna la posizione dell'utente"""
     async with AsyncSessionLocal() as session:
         result = await session.execute(select(User).where(User.id == user_id))
         user = result.scalars().first()
         
         if not user:
-            user = User(id=user_id, latitude=lat, longitude=lon)
+            user = User(id=user_id, latitude=lat, longitude=lon, location_name=location_name)
             session.add(user)
         else:
             user.latitude = lat
             user.longitude = lon
+            if location_name:
+                user.location_name = location_name
             
         await session.commit()
 

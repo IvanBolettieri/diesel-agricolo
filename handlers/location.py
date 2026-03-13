@@ -60,7 +60,7 @@ async def handle_gps_location(update: Update, context: ContextTypes.DEFAULT_TYPE
     lat = update.message.location.latitude
     lon = update.message.location.longitude
     
-    await update_user_location(update.effective_user.id, lat, lon)
+    await update_user_location(update.effective_user.id, lat, lon, "Posizione GPS")
     # Abbiamo ottenuto la posizione, smettiamo di ascoltare
     context.user_data['waiting_for_location'] = False
     
@@ -90,9 +90,9 @@ async def confirm_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         location_name = btn.text.replace("📍 ", "").replace("🏙️ ", "").replace("🗺️ ", "")
                         break
 
-        logger.info(f"💾 Salvataggio Coordinate per User {update.effective_user.id}: Lat={lat}, Lon={lon}")
+        logger.info(f"💾 Salvataggio Coordinate per User {update.effective_user.id}: Luogo='{location_name}' | Lat={lat}, Lon={lon}")
         # Salviamo la posizione nel DB
-        await update_user_location(update.effective_user.id, float(lat), float(lon))
+        await update_user_location(update.effective_user.id, float(lat), float(lon), location_name)
         # Abbiamo impostato la posizione, smettiamo di ascoltare
         context.user_data['waiting_for_location'] = False
         

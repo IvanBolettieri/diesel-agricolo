@@ -1,7 +1,10 @@
+import logging
 from telegram import Update, KeyboardButton, ReplyKeyboardMarkup
 from telegram.ext import ContextTypes
 from handlers.keyboards import get_main_menu
 from database import get_user
+
+logger = logging.getLogger(__name__)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['waiting_for_location'] = False
@@ -16,10 +19,16 @@ async def posizione(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Controlliamo se esiste già una posizione salvata
     user = await get_user(update.effective_user.id)
+
+    if user:
+        logger.info(f"👤 DATI UTENTE DAL DB -> ID: {user.id} | Lat: {user.latitude} | Lon: {user.longitude} | Fuel: {user.fuel_type}")
+    else:
+        logger.info(f"👤 UTENTE NON TROVATO NEL DB: ID={update.effective_user.id}")
     
     status_msg = ""
     if user and user.latitude and user.longitude:
-        status_msg = f"✅ **POSIZIONE ATTUALE:**\nLat: {user.latitude:.4f}\nLon: {user.longitude:.4f}\n\n"
+        citta = user.location_name if getattr(user, 'location_name', None) else "Non definita"
+        status_msg = f"✅ **POSIZIONE ATTUALE:**\nCittà: {citta}\nLat: {user.latitude:.4f}\nLon: {user.longitude:.4f}\n\n"
     else:
         status_msg = "🚫 **NESSUNA POSIZIONE SALVATA!** 🚫\n_Devi assolutamente impostarne una per cercare i benzinai._\n\n"
 
