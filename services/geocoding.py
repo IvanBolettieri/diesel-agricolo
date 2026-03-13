@@ -6,7 +6,7 @@ async def search_location(query: str):
     params = {
         'q': query,
         'format': 'json',
-        'limit': 5,
+        'limit': 10,
         'addressdetails': 1,
         'countrycodes': 'it' # Limitiamo la ricerca all'Italia
     }

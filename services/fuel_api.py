@@ -2,7 +2,7 @@ import aiohttp
 
 URL = "https://carburanti.mise.gov.it/ospzApi/search/zone"
 
-async def search_fuel_stations(lat: float, lon: float, radius: int = 10, fuel_type: str = "2-1"):
+async def search_fuel_stations(lat: float, lon: float, radius: int = 5, fuel_type: str = "2-1"):
     """
     Cerca i benzinai tramite API MISE.
     fuel_type "2-1" corrisponde generalmente al Gasolio (Self).

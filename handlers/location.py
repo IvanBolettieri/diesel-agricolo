@@ -1,10 +1,19 @@
+import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from services.geocoding import search_location
 from handlers.keyboards import get_main_menu
+from database import update_user_location
+
+logger = logging.getLogger(__name__)
 
 async def handle_text_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Gestisce l'input testuale dell'utente per cercare una città"""
+    
+    # Se non stiamo aspettando una posizione (l'utente non ha cliccato "Imposta Posizione"), ignoriamo il messaggio
+    if not context.user_data.get('waiting_for_location'):
+        return
+
     query = update.message.text
     
     # Feedback immediato all'utente
@@ -21,12 +30,27 @@ async def handle_text_location(update: Update, context: ContextTypes.DEFAULT_TYP
         # Creiamo un identificativo breve per il callback: "LOC|lat|lon"
         lat = place.get('lat')
         lon = place.get('lon')
-        display_name = place.get('display_name').split(',')[0] # Prendiamo solo la prima parte del nome
+        
+        # Prendiamo le prime 2 parti del nome per dare più contesto ed evitare duplicati visivi
+        # Esempio: Invece di "Matera", mostrerà "Matera, Basilicata"
+        parts = place.get('display_name', '').split(',')
+        label_name = ", ".join(parts[:2]).strip()
+        
+        # Icona in base al tipo di luogo
+        p_class = place.get('class', '')
+        p_type = place.get('type', '')
+        
+        if p_class == 'place' and p_type in ('city', 'town', 'village'):
+            icon = "🏙️"
+        elif p_class == 'boundary':
+            icon = "🗺️"
+        else:
+            icon = "📍"
         
         # Callback data deve essere stringa e corta
         callback_data = f"LOC|{lat}|{lon}"
         
-        keyboard.append([InlineKeyboardButton(f"📍 {place.get('display_name')}", callback_data=callback_data)])
+        keyboard.append([InlineKeyboardButton(f"{icon} {label_name}", callback_data=callback_data)])
 
     reply_markup = InlineKeyboardMarkup(keyboard)
     await wait_msg.edit_text("Ho trovato questi risultati, clicca su quello corretto:", reply_markup=reply_markup)
@@ -36,8 +60,9 @@ async def handle_gps_location(update: Update, context: ContextTypes.DEFAULT_TYPE
     lat = update.message.location.latitude
     lon = update.message.location.longitude
     
-    context.user_data['latitude'] = lat
-    context.user_data['longitude'] = lon
+    await update_user_location(update.effective_user.id, lat, lon)
+    # Abbiamo ottenuto la posizione, smettiamo di ascoltare
+    context.user_data['waiting_for_location'] = False
     
     await update.message.reply_text(
         f"✅ Posizione GPS acquisita!\nCoordinate: {lat:.4f}, {lon:.4f}",
@@ -50,19 +75,37 @@ async def confirm_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer() # Conferma a Telegram che abbiamo ricevuto il click
     
     data = query.data
+    logger.info(f"📍 Callback Posizione ricevuta: {data}")
+
     if data.startswith("LOC|"):
         _, lat, lon = data.split("|")
         
-        # Salviamo la posizione nei dati utente (user_data) per usarla dopo
-        context.user_data['latitude'] = lat
-        context.user_data['longitude'] = lon
+        # Recuperiamo il nome del luogo dal bottone cliccato
+        location_name = "Posizione selezionata"
+        if query.message and query.message.reply_markup:
+            for row in query.message.reply_markup.inline_keyboard:
+                for btn in row:
+                    if btn.callback_data == data:
+                        # Rimuoviamo le icone se presenti per avere solo il nome pulito
+                        location_name = btn.text.replace("📍 ", "").replace("🏙️ ", "").replace("🗺️ ", "")
+                        break
+
+        logger.info(f"💾 Salvataggio Coordinate per User {update.effective_user.id}: Lat={lat}, Lon={lon}")
+        # Salviamo la posizione nel DB
+        await update_user_location(update.effective_user.id, float(lat), float(lon))
+        # Abbiamo impostato la posizione, smettiamo di ascoltare
+        context.user_data['waiting_for_location'] = False
         
         # Modifichiamo il messaggio originale per confermare
         await query.edit_message_text(
-            f"✅ Posizione impostata!\n"
+            f"✅ Posizione impostata: **{location_name}**\n"
             f"Coordinate: {lat}, {lon}\n"
-            f"Ora userò questa posizione per cercare i benzinai."
+            f"Ora userò questa posizione per cercare i benzinai.",
+            parse_mode="Markdown"
         )
+        
+        # Invia la mappa visiva per confermare all'utente dove ha piazzato il pin
+        await context.bot.send_location(chat_id=update.effective_chat.id, latitude=float(lat), longitude=float(lon))
         
         # Inviamo un nuovo messaggio per mostrare il menu (perché edit_message_text non può mostrare una ReplyKeyboard)
         await context.bot.send_message(chat_id=update.effective_chat.id, text="Cosa vuoi fare adesso?", reply_markup=get_main_menu())
